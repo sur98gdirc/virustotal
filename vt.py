@@ -4,8 +4,11 @@
 vt.py
 Command-line utility to automatically lookup on VirusTotal all files recursively contained in a directory.
 
-by Claudio Guarnieri a.k.a. botherder a.k.a. Nex on 2013-May-30
+originally by Claudio Guarnieri a.k.a. botherder a.k.a. Nex on 2013-May-30
 https://github.com/botherder/virustotal
+
+modifications by Artur Mansurov a.k.a. sur a.k.a. sur98 a.k.a. sur_kg since 2020-Feb-04
+https://github.com/sur98gdirc/virustotal
 '''
 
 import os
@@ -16,24 +19,30 @@ import urllib2
 import hashlib
 import argparse
 
-VIRUSTOTAL_FILE_URL = 'https://www.virustotal.com/vtapi/v2/file/report'
-API_KEY = ''
+class Config:
+    API_KEY = ''
 
-TPL_SECTION = "[*] ({0}):"
-TPL_MATCH = "\t\_ Results: {0}/{1} {2}\n\t   SHA256: {3}\n\t   Scan Date: {4}"
-TPL_SIGNATURES = "\t   Signatures:\n\t\t{0}"
+    VIRUSTOTAL_FILE_URL = 'https://www.virustotal.com/vtapi/v2/file/report'
 
-def color(text, color_code):
-    if sys.platform == "win32" and os.getenv("TERM") != "xterm":
-        return text
+    TPL_SECTION = "[*] ({0}):"
+    TPL_MATCH = "\t\_ Results: {0}/{1} {2}\n\t   SHA256: {3}\n\t   Scan Date: {4}"
+    TPL_SIGNATURES = "\t   Signatures:\n\t\t{0}"
 
-    return '\x1b[%dm%s\x1b[0m' % (color_code, text)
+class XtermColor:
+    @staticmethod
+    def custom(text, color_code):
+        if sys.platform == "win32" and os.getenv("TERM") != "xterm":
+            return text
 
-def red(text):
-    return color(text, 31)
+        return '\x1b[%dm%s\x1b[0m' % (color_code, text)
 
-def yellow(text):
-    return color(text, 33)
+    @staticmethod
+    def red(text):
+        return XtermColor.custom(text, 31)
+
+    @staticmethod
+    def yellow(text):
+        return XtermColor.custom(text, 33)
 
 class Hash(object):
     def __init__(self, path):
@@ -106,11 +115,11 @@ class Scanner(object):
             })
 
         try:
-            request = urllib2.Request(VIRUSTOTAL_FILE_URL, data)
+            request = urllib2.Request(Config.VIRUSTOTAL_FILE_URL, data)
             response = urllib2.urlopen(request)
             report = json.loads(response.read())
         except Exception as e:
-            print(red("[!] ERROR: Cannot obtain results from VirusTotal: {0}\n".format(e)))
+            print(XtermColor.red("[!] ERROR: Cannot obtain results from VirusTotal: {0}\n".format(e)))
             return
 
         results = []
@@ -128,12 +137,12 @@ class Scanner(object):
                     if item['path'] not in entry_paths:
                         entry_paths.append(item['path'])
 
-            print(TPL_SECTION.format('\n     '.join(entry_paths))),
+            print(Config.TPL_SECTION.format('\n     '.join(entry_paths))),
 
             if entry['response_code'] == 0:
                 print('NOT FOUND')
             else:
-                print(yellow('FOUND'))
+                print(XtermColor.yellow('FOUND'))
 
                 signatures = []
                 for av, scan in entry['scans'].items():
@@ -141,24 +150,24 @@ class Scanner(object):
                         signatures.append(scan['result'])
                 
                 if entry['positives'] > 0:
-                    print(TPL_MATCH.format(
+                    print(Config.TPL_MATCH.format(
                         entry['positives'],
                         entry['total'],
-                        red('DETECTED'),
+                        XtermColor.red('DETECTED'),
                         entry['resource'],
                         entry['scan_date']
                         ))
 
                     if entry['positives'] > 0:
-                        print(TPL_SIGNATURES.format('\n\t\t'.join(signatures)))
+                        print(Config.TPL_SIGNATURES.format('\n\t\t'.join(signatures)))
 
     def run(self):
         if not self.key:
-            print(red("[!] ERROR: You didn't specify a valid VirusTotal API key.\n"))
+            print(XtermColor.red("[!] ERROR: You didn't specify a valid VirusTotal API key.\n"))
             return
 
         if not os.path.exists(self.path):
-            print(red("[!] ERROR: The target path {0} does not exist.\n".format(self.path)))
+            print(XtermColor.red("[!] ERROR: The target path {0} does not exist.\n".format(self.path)))
             return
 
         self.populate()
@@ -167,7 +176,7 @@ class Scanner(object):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('path', type=str, help='Path to the file or folder to lookup on VirusTotal')
-    parser.add_argument('--key', type=str, action='store', default=API_KEY, help='VirusTotal API key')
+    parser.add_argument('--key', type=str, action='store', default=Config.API_KEY, help='VirusTotal API key')
 
     try:
         args = parser.parse_args()
