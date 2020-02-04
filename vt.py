@@ -1,4 +1,13 @@
 #!/usr/bin/env python
+
+'''
+vt.py
+Command-line utility to automatically lookup on VirusTotal all files recursively contained in a directory.
+
+by Claudio Guarnieri a.k.a. botherder a.k.a. Nex on 2013-May-30
+https://github.com/botherder/virustotal
+'''
+
 import os
 import sys
 import json
