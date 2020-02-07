@@ -13,6 +13,7 @@ https://github.com/sur98gdirc/virustotal
 
 import os
 import sys
+import time
 import json
 import urllib
 import urllib2
@@ -22,7 +23,8 @@ import argparse
 class ConfigVirustotal:
     API_KEY = ''
 
-    VIRUSTOTAL_FILE_URL = 'https://www.virustotal.com/vtapi/v2/file/report'
+    FILE_REPORT_URL = 'https://www.virustotal.com/vtapi/v2/file/report'
+    FILE_REPORT_MAX_N_OBJECTS = 4
 
 class ConfigPrint:
     TPL_SECTION = "[*] ({0}):"
@@ -75,25 +77,59 @@ class Hash(object):
 class VirustotalAPI:
     @staticmethod
     def getReportsByHashes(hashes):
-        data = urllib.urlencode({
-            'resource' : ','.join(hashes),
-            'apikey' : ConfigVirustotal.API_KEY
-            })
+        hashes = iter(hashes)
 
         try:
-            request = urllib2.Request(ConfigVirustotal.VIRUSTOTAL_FILE_URL, data)
-            response = urllib2.urlopen(request)
-            report = json.loads(response.read())
-        except Exception as e:
-            print(XtermColor.red("[!] ERROR: Cannot obtain results from VirusTotal: {0}\n".format(e)))
-            raise
+            nextHash = next(hashes)
+        except StopIteration:
+            yield ( )
+            return
 
-        results = []
-        if type(report) is dict:
-            results.append(report)
-        elif type(report) is list:
-            results = report
-        return results
+        while nextHash:
+            count = 0
+            hashesChunk = []
+            while nextHash and (count < ConfigVirustotal.FILE_REPORT_MAX_N_OBJECTS):
+                hashesChunk.append(nextHash)
+                count += 1
+                try:
+                    nextHash = next(hashes)
+                except StopIteration:
+                    nextHash = None
+            
+            data = urllib.urlencode({
+                'resource' : ','.join(hashesChunk),
+                'apikey' : ConfigVirustotal.API_KEY
+                })
+
+            try:
+                request = urllib2.Request(ConfigVirustotal.FILE_REPORT_URL, data)
+                for attempt in range(10):
+                    response = urllib2.urlopen(request)
+                    responseText = response.read()
+                    if responseText:
+                        break
+                    time.sleep(10)
+                else:
+                    print("Virustotal service refuses to respond, run out of attempts")
+                    raise Exception
+                report = json.loads(responseText)
+            except Exception as e:
+                print(XtermColor.red("[!] ERROR: Cannot obtain results from VirusTotal: {0}\n".format(e)))
+                print('data:', data)
+                print('request:', repr(request))
+                print('response:', repr(response))
+                print('responseText:', responseText)
+                raise
+
+            if type(report) is dict:
+                yield report
+            elif type(report) is list:
+                for r in report:
+                    yield r 
+            else:
+                print("Cant parse this report: " + repr(report))
+                raise Exception
+        
 
 class Scanner(object):
     def __init__(self, path):
