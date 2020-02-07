@@ -19,11 +19,12 @@ import urllib2
 import hashlib
 import argparse
 
-class Config:
+class ConfigVirustotal:
     API_KEY = ''
 
     VIRUSTOTAL_FILE_URL = 'https://www.virustotal.com/vtapi/v2/file/report'
 
+class ConfigPrint:
     TPL_SECTION = "[*] ({0}):"
     TPL_MATCH = "\t\_ Results: {0}/{1} {2}\n\t   SHA256: {3}\n\t   Scan Date: {4}"
     TPL_SIGNATURES = "\t   Signatures:\n\t\t{0}"
@@ -71,9 +72,31 @@ class Hash(object):
         self.md5 = md5.hexdigest()
         self.sha256 = sha256.hexdigest()
 
+class VirustotalAPI:
+    @staticmethod
+    def getReportsByHashes(hashes):
+        data = urllib.urlencode({
+            'resource' : ','.join(hashes),
+            'apikey' : ConfigVirustotal.API_KEY
+            })
+
+        try:
+            request = urllib2.Request(ConfigVirustotal.VIRUSTOTAL_FILE_URL, data)
+            response = urllib2.urlopen(request)
+            report = json.loads(response.read())
+        except Exception as e:
+            print(XtermColor.red("[!] ERROR: Cannot obtain results from VirusTotal: {0}\n".format(e)))
+            raise
+
+        results = []
+        if type(report) is dict:
+            results.append(report)
+        elif type(report) is list:
+            results = report
+        return results
+
 class Scanner(object):
-    def __init__(self, key, path):
-        self.key = key
+    def __init__(self, path):
         self.path = path
         self.list = []
 
@@ -109,24 +132,7 @@ class Scanner(object):
             if entry['sha256'] not in hashes:
                 hashes.append(entry['sha256'])
 
-        data = urllib.urlencode({
-            'resource' : ','.join(hashes),
-            'apikey' : self.key
-            })
-
-        try:
-            request = urllib2.Request(Config.VIRUSTOTAL_FILE_URL, data)
-            response = urllib2.urlopen(request)
-            report = json.loads(response.read())
-        except Exception as e:
-            print(XtermColor.red("[!] ERROR: Cannot obtain results from VirusTotal: {0}\n".format(e)))
-            return
-
-        results = []
-        if type(report) is dict:
-            results.append(report)
-        elif type(report) is list:
-            results = report
+        results = VirustotalAPI.getReportsByHashes(hashes)
 
         for entry in results:
             sha256 = entry['resource']
@@ -137,7 +143,7 @@ class Scanner(object):
                     if item['path'] not in entry_paths:
                         entry_paths.append(item['path'])
 
-            print(Config.TPL_SECTION.format('\n     '.join(entry_paths))),
+            print(ConfigPrint.TPL_SECTION.format('\n     '.join(entry_paths))),
 
             if entry['response_code'] == 0:
                 print('NOT FOUND')
@@ -150,7 +156,7 @@ class Scanner(object):
                         signatures.append(scan['result'])
                 
                 if entry['positives'] > 0:
-                    print(Config.TPL_MATCH.format(
+                    print(ConfigPrint.TPL_MATCH.format(
                         entry['positives'],
                         entry['total'],
                         XtermColor.red('DETECTED'),
@@ -159,10 +165,10 @@ class Scanner(object):
                         ))
 
                     if entry['positives'] > 0:
-                        print(Config.TPL_SIGNATURES.format('\n\t\t'.join(signatures)))
+                        print(ConfigPrint.TPL_SIGNATURES.format('\n\t\t'.join(signatures)))
 
     def run(self):
-        if not self.key:
+        if not ConfigVirustotal.API_KEY:
             print(XtermColor.red("[!] ERROR: You didn't specify a valid VirusTotal API key.\n"))
             return
 
@@ -176,7 +182,7 @@ class Scanner(object):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('path', type=str, help='Path to the file or folder to lookup on VirusTotal')
-    parser.add_argument('--key', type=str, action='store', default=Config.API_KEY, help='VirusTotal API key')
+    parser.add_argument('--key', type=str, action='store', default=ConfigVirustotal.API_KEY, help='VirusTotal API key')
 
     try:
         args = parser.parse_args()
@@ -184,5 +190,7 @@ if __name__ == '__main__':
         parser.error(e)
         sys.exit()
 
-    scan = Scanner(args.key, args.path)
+    ConfigVirustotal.API_KEY = args.key
+
+    scan = Scanner(args.path)
     scan.run()
