@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''
 vt.py
@@ -15,8 +15,7 @@ import os
 import sys
 import time
 import json
-import urllib
-import urllib2
+import requests
 import hashlib
 import argparse
 
@@ -96,29 +95,28 @@ class VirustotalAPI:
                 except StopIteration:
                     nextHash = None
             
-            data = urllib.urlencode({
+            data = {
                 'resource' : ','.join(hashesChunk),
                 'apikey' : ConfigVirustotal.API_KEY
-                })
+                }
 
             try:
-                request = urllib2.Request(ConfigVirustotal.FILE_REPORT_URL, data)
                 for attempt in range(10):
-                    response = urllib2.urlopen(request)
-                    responseText = response.read()
-                    if responseText:
+                    response = requests.get(ConfigVirustotal.FILE_REPORT_URL, params=data)
+                    if response.status_code == 200:
                         break
                     time.sleep(10)
                 else:
                     print("Virustotal service refuses to respond, run out of attempts")
                     raise Exception
-                report = json.loads(responseText)
+                report = response.json()
             except Exception as e:
                 print(XtermColor.red("[!] ERROR: Cannot obtain results from VirusTotal: {0}\n".format(e)))
-                print('data:', data)
-                print('request:', repr(request))
-                print('response:', repr(response))
-                print('responseText:', responseText)
+                print('data:', repr(data))
+                print('response.url:', repr(response.url))
+                print('response.status_code:', response.status_code)
+                print('response.headers:', repr(response.headers))
+                print('response.text:', response.text)
                 raise
 
             if type(report) is dict:
@@ -179,7 +177,7 @@ class Scanner(object):
                     if item['path'] not in entry_paths:
                         entry_paths.append(item['path'])
 
-            print(ConfigPrint.TPL_SECTION.format('\n     '.join(entry_paths))),
+            print(ConfigPrint.TPL_SECTION.format('\n     '.join(entry_paths)), end=' '),
 
             if entry['response_code'] == 0:
                 print('NOT FOUND')
