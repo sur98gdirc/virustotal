@@ -49,7 +49,6 @@ class XtermColor:
 class Hash(object):
     def __init__(self, path):
         self.path = path
-        self.md5 = ''
         self.sha256 = ''
 
     def get_chunks(self):
@@ -63,14 +62,11 @@ class Hash(object):
         fd.close()
 
     def calculate(self):
-        md5 = hashlib.md5()
         sha256 = hashlib.sha256()
 
         for chunk in self.get_chunks():
-            md5.update(chunk)
             sha256.update(chunk)
 
-        self.md5 = md5.hexdigest()
         self.sha256 = sha256.hexdigest()
 
 class VirustotalAPI:
@@ -155,7 +151,6 @@ class Scanner(object):
 
             self.list.append({
                 'path' : path,
-                'md5' : hashes.md5,
                 'sha256' : hashes.sha256
                 })
 
