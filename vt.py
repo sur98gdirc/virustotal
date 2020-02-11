@@ -81,7 +81,6 @@ class VirustotalAPI:
         try:
             nextHash = next(hashes)
         except StopIteration:
-            yield ( )
             return
 
         while nextHash:
