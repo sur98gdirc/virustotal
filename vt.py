@@ -43,6 +43,10 @@ class XtermColor:
         return XtermColor.custom(text, 31)
 
     @staticmethod
+    def green(text):
+        return XtermColor.custom(text, 32)
+
+    @staticmethod
     def yellow(text):
         return XtermColor.custom(text, 33)
 
@@ -68,6 +72,8 @@ class Hash(object):
             sha256.update(chunk)
 
         self.sha256 = sha256.hexdigest()
+        return self
+
 
 class VirustotalAPI:
     @staticmethod
@@ -122,56 +128,51 @@ class VirustotalAPI:
             else:
                 print("Cant parse this report: " + repr(report))
                 raise Exception
-        
+
 
 class Scanner(object):
     def __init__(self, path):
         self.path = path
-        self.list = []
+        self.files = []
+        self.file2hash = {}
+        self.hash2file = {}
 
     def populate(self):
-        paths = []
-
         if os.path.isfile(self.path):
-            paths.append(self.path)
+            self.files.append(self.path)
         else:
             for root, folders, files in os.walk(self.path):
                 for file_name in files:
-                    # Skip hidden files, might need an option for this.
-                    if file_name.startswith('.'):
-                        continue
-
                     file_path = os.path.join(root, file_name)
                     if os.path.exists(file_path):
-                        paths.append(file_path)
+                        self.files.append(file_path)
 
-        for path in paths:
-            hashes = Hash(path)
-            hashes.calculate()
+        for file in self.files:
+            if 0 == os.path.getsize(file):
+                hash = ''
+            else:
+                hash = Hash(file).calculate().sha256
+            self.file2hash[file] = hash
+            self.hash2file.setdefault(hash, []).append(file)
 
-            self.list.append({
-                'path' : path,
-                'sha256' : hashes.sha256
-                })
+    def getHashes(self):
+        for file in self.files:
+            hash = self.file2hash[file]
+            if hash: # skip empty files
+                firstFileForThisHash = self.hash2file[hash][0]
+                if file == firstFileForThisHash:
+                    yield hash
 
     def scan(self):
-        hashes = []
-        for entry in self.list:
-            if entry['sha256'] not in hashes:
-                hashes.append(entry['sha256'])
+        results = VirustotalAPI.getReportsByHashes(self.getHashes())
 
-        results = VirustotalAPI.getReportsByHashes(hashes)
-
+        hash2fileRemain = self.hash2file.copy()
         for entry in results:
-            sha256 = entry['resource']
+            hash = entry['resource']
 
-            entry_paths = []
-            for item in self.list:
-                if item['sha256'] == sha256:
-                    if item['path'] not in entry_paths:
-                        entry_paths.append(item['path'])
+            entry_paths = hash2fileRemain.pop(hash)
 
-            print(ConfigPrint.TPL_SECTION.format('\n     '.join(entry_paths)), end=' '),
+            print(ConfigPrint.TPL_SECTION.format('\n     '.join(entry_paths)), end=' ')
 
             if entry['response_code'] == 0:
                 print('NOT FOUND')
@@ -182,7 +183,7 @@ class Scanner(object):
                 for av, scan in entry['scans'].items():
                     if scan['result']:
                         signatures.append(scan['result'])
-                
+
                 if entry['positives'] > 0:
                     print(ConfigPrint.TPL_MATCH.format(
                         entry['positives'],
@@ -194,6 +195,18 @@ class Scanner(object):
 
                     if entry['positives'] > 0:
                         print(ConfigPrint.TPL_SIGNATURES.format('\n\t\t'.join(signatures)))
+
+        emptyFiles = hash2fileRemain.pop('', [])
+        if (emptyFiles):
+            print(ConfigPrint.TPL_SECTION.format('\n     '.join(emptyFiles)), end=' ')
+            print(XtermColor.green('        Empty file(s)'))
+
+        if hash2fileRemain:
+            print(XtermColor.red('Some files havent been looked up (dunno why):'))
+            for (hash, entry_paths) in hash2fileRemain.items():
+                print(ConfigPrint.TPL_SECTION.format('\n     '.join(entry_paths)), end=' ')
+                print('       ', hash)
+            raise Exception
 
     def run(self):
         if not ConfigVirustotal.API_KEY:
